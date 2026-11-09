@@ -5,45 +5,41 @@
 1. [Структура проекта](#структура-проекта)
 2. [Описание API](#описание-api)
 3. [Примеры запросов](#примеры-запросов)
-4. [Мультимодальные функции](#мультимодальные-функции)
-5. [Модели данных](#модели-данных)
+4. [OSINT-сводка](#osint-сводка)
+5. [Мультимодальные функции](#мультимодальные-функции)
+6. [Модели данных](#модели-данных)
 
 ---
 
 ## Структура проекта
 
 ```
-competitor-monitor/
+CompetitorAI/
 │
-├── backend/                     # Backend модуль
-│   ├── __init__.py
-│   ├── main.py                  # Главный файл FastAPI
-│   ├── config.py                # Конфигурация приложения
-│   │
-│   ├── models/                  # Pydantic модели
-│   │   ├── __init__.py
-│   │   └── schemas.py           # Схемы запросов/ответов
-│   │
-│   └── services/                # Бизнес-логика
-│       ├── __init__.py
-│       ├── openai_service.py    # AITUNNEL (OpenAI-совместимый API)
-│       ├── aitunnel_service.py  # Баланс AITUNNEL
-│       ├── parser_service.py    # Playwright / HTTP парсинг
+├── backend/                     # FastAPI
+│   ├── main.py
+│   ├── config.py
+│   ├── aitunnel_context.py      # ключ из заголовка X-AITunnel-API-Key
+│   ├── models/schemas.py
+│   └── services/
+│       ├── openai_service.py    # AITUNNEL
+│       ├── aitunnel_service.py  # баланс
+│       ├── parser_service.py    # Playwright / HTTP
 │       ├── web_search_service.py
 │       ├── osint_service.py     # OSINT-сводка
-│       └── history_service.py   # История запросов
+│       └── history_service.py
 │
-├── frontend/                    # Frontend модуль
-│   ├── index.html               # Главная HTML страница
-│   ├── styles.css               # CSS стили
-│   └── app.js                   # JavaScript приложение
-│
-├── requirements.txt             # Python зависимости
-├── env.example.txt              # Пример переменных окружения
-├── history.json                 # Файл истории запросов
-├── README.md                    # Описание проекта
-└── docs.md                      # Эта документация
+├── frontend/                    # веб-UI (вкладка «Сводка по OSINT»)
+├── desktop/README.md            # Windows .exe (WebView2), бинарник — в Releases
+├── scripts/install_browsers.sh  # Chromium для backend (Linux/macOS)
+├── run.py
+├── requirements.txt
+├── env.example.txt
+├── README.md
+└── docs.md
 ```
+
+`history.json` создаётся локально и в git не попадает. Windows `.exe` — в [Releases](https://github.com/magga-worker/CompetitorAI/releases).
 
 ---
 
@@ -60,7 +56,7 @@ http://localhost:<API_PORT>
 ### Аутентификация AITUNNEL
 
 - Ключ в `.env` сервера: `AITUNNEL_API_KEY`
-- Либо заголовок на каждый запрос: `X-AITunnel-API-Key: <ваш_ключ>` (desktop сохраняет ключ локально)
+- Либо заголовок на каждый запрос: `X-AITunnel-API-Key: <ваш_ключ>` (Windows `.exe` хранит ключ локально)
 
 ### Эндпоинты
 
@@ -188,7 +184,59 @@ curl -X POST "http://localhost:8000/parse_demo" \
 }
 ```
 
-### 4. Получение истории (`GET /history`)
+### 4. OSINT-сводка (`POST /osint_summary`)
+
+Ищет открытые упоминания компании (DuckDuckGo HTML: отзывы, рейтинг, соцсети, репутация), затем модель собирает структурированный отчёт. Источники возвращаются списком со ссылками.
+
+**Запрос:**
+```bash
+curl -X POST "http://localhost:8000/osint_summary" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "company_name": "Пример ООО",
+    "company_details": "ИНН 7700000000, Москва"
+  }'
+```
+
+Поле `company_details` необязательно: ИНН, город, бренд, юр. адрес.
+
+**Ответ (сокращённо):**
+```json
+{
+  "success": true,
+  "company_name": "Пример ООО",
+  "report": {
+    "summary": "Краткое резюме по открытым источникам",
+    "company_overview": "Чем занимается компания по найденным страницам",
+    "web_and_social_findings": ["Сайт и страницы в соцсетях..."],
+    "review_statistics": {
+      "overview": "Оценки и тон отзывов по площадкам",
+      "estimated_total_reviews": "сотни",
+      "average_rating_estimate": 4.2,
+      "sentiment_percent": { "positive": 60, "neutral": 25, "negative": 15 },
+      "by_platform": [
+        { "platform": "2GIS", "rating_estimate": 4.3, "notes": "..." }
+      ],
+      "top_positive_themes": ["сервис"],
+      "top_negative_themes": ["сроки"]
+    },
+    "key_insights": ["..."],
+    "risks": ["..."],
+    "recommendations": ["..."],
+    "key_source_links": [
+      { "title": "Отзывы", "url": "https://example.com", "snippet": "..." }
+    ]
+  },
+  "sources": [
+    { "title": "...", "url": "https://...", "snippet": "..." }
+  ],
+  "error": null
+}
+```
+
+В истории тип запроса: `osint`.
+
+### 5. Получение истории (`GET /history`)
 
 **Запрос:**
 ```bash
@@ -211,7 +259,7 @@ curl -X GET "http://localhost:8000/history"
 }
 ```
 
-### 5. Очистка истории (`DELETE /history`)
+### 6. Очистка истории (`DELETE /history`)
 
 **Запрос:**
 ```bash
@@ -226,7 +274,7 @@ curl -X DELETE "http://localhost:8000/history"
 }
 ```
 
-### 6. Проверка здоровья (`GET /health`)
+### 7. Проверка здоровья (`GET /health`)
 
 **Запрос:**
 ```bash
@@ -241,6 +289,23 @@ curl -X GET "http://localhost:8000/health"
   "version": "1.0.0"
 }
 ```
+
+---
+
+## OSINT-сводка
+
+Вкладка веб-интерфейса **«Сводка по OSINT»** и эндпоинт `POST /osint_summary`.
+
+**Как устроено**
+
+1. По названию компании (и опциональным реквизитам) формируются поисковые запросы: отзывы, рейтинг, соцсети, репутация, карты.
+2. `web_search_service` собирает сниппеты (до 12 уникальных URL).
+3. `openai_service.analyze_osint` строит отчёт: обзор, находки в вебе/соцсетях, оценка отзывов (тональность, площадки), риски и рекомендации.
+4. В ответе — `report` и плоский список `sources` со ссылками.
+
+Это **не** скрытый доступ к закрытым данным: только то, что находится публичным поиском, плюс интерпретация LLM. Результаты зависят от выдачи поиска и могут быть неполными.
+
+**Минимум:** `company_name` от 2 символов.
 
 ---
 
@@ -283,9 +348,10 @@ curl -X GET "http://localhost:8000/health"
 
 **Особенности:**
 - Автоматическое добавление протокола `https://`
-- Следование редиректам
-- Таймаут: 10 секунд
-- User-Agent: Mozilla/5.0 (имитация браузера)
+- Playwright Chromium в `.browsers` (скрипт `scripts/install_browsers.sh`, Linux/macOS)
+- Без Chromium — HTTP-fallback без скриншота
+- Таймаут: `PARSER_TIMEOUT` (по умолчанию 20 с)
+- Windows `.exe` парсит через встроенный WebView2, не через `.browsers`
 
 ---
 
@@ -302,6 +368,36 @@ curl -X GET "http://localhost:8000/health"
 ```typescript
 {
   url: string  // URL сайта для парсинга
+}
+```
+
+### OsintRequest
+```typescript
+{
+  company_name: string     // минимум 2 символа
+  company_details?: string // ИНН, город, бренд и т.п.
+}
+```
+
+### OsintReport
+```typescript
+{
+  summary: string
+  company_overview: string
+  web_and_social_findings: string[]
+  review_statistics: {
+    overview: string
+    estimated_total_reviews: string
+    average_rating_estimate?: number  // 0–5
+    sentiment_percent: { positive: number, neutral: number, negative: number }
+    by_platform: { platform: string, rating_estimate?: number, notes: string }[]
+    top_positive_themes: string[]
+    top_negative_themes: string[]
+  }
+  key_insights: string[]
+  risks: string[]
+  recommendations: string[]
+  key_source_links: { title: string, url: string, snippet: string }[]
 }
 ```
 
@@ -332,7 +428,7 @@ curl -X GET "http://localhost:8000/health"
 {
   id: string              // UUID записи
   timestamp: datetime     // Время запроса
-  request_type: string    // "text" | "image" | "parse"
+  request_type: string    // "text" | "image" | "parse" | "osint"
   request_summary: string // Краткое описание запроса
   response_summary: string // Краткое описание ответа
 }
